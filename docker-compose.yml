@@ -1,0 +1,26 @@
+version: '3.9'
+
+services:
+  fix_server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: fix_server
+    ports:
+      - "9876:9876"
+    networks:
+      - fixnet
+
+  fix_client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: fix_client
+    depends_on:
+      - fix_server
+    networks:
+      - fixnet
+
+networks:
+  fixnet:
+    driver: bridge
