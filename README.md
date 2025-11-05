@@ -1,4 +1,4 @@
-# FIX System (Server & Client)
+# FIX Hub (Server & Client)
 
 ## 📝 To-Do
 
@@ -12,7 +12,7 @@
 
 ## 📘 專案簡介
 
-`fix_system` 是一個以 **C++17** 開發、基於 **QuickFIX** 的簡易 FIX 通訊範例，  
+`fix_hub` 是一個以 **C++17** 開發、基於 **QuickFIX** 的簡易 FIX 通訊範例，  
 包含獨立的 **Server (Acceptor)** 與 **Client (Initiator)** 模組，  
 並透過 Docker 容器化實現可重現的測試與部署環境。
 
@@ -21,7 +21,7 @@
 ## 📂 專案結構
 
 ```text
-FIX_system/
+FIX_hub/
 ├─ common/ # 共用模組 (FixHelper, Logger)
 ├─ server/ # Server 專案
 │ ├─ src/
