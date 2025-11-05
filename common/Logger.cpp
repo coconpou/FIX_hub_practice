@@ -1,23 +1,25 @@
 #include "Logger.h"
+#include <fstream>
 
-Logger::Logger() 
-{
+Logger::Logger(const std::string& logFilename) {
+    _logFile.open(_logFilename, std::ios::out | std::ios::app);
+    if (!_logFile.is_open()) {
+        std::cerr << "CRITICAL ERROR: Could not open log file for writing: " 
+                  << _logFilename << std::endl;
+    }
+
     LogInfo("Logger system initialized.");
 }
 
-Logger::~Logger() 
-{
+Logger::~Logger() {
     LogInfo("Logger system shutting down.");
+    
+    if (_logFile.is_open()) { _logFile.close(); }
 }
 
-// --- 1. 日誌功能 ---
-
-std::string Logger::GetTimestamp() const
-{
+std::string Logger::GetTimestamp() const {
     auto now = std::chrono::system_clock::now();
     auto in_time_t = std::chrono::system_clock::to_time_t(now);
-    
-    // ms
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     std::stringstream ss;
@@ -30,22 +32,33 @@ std::string Logger::GetTimestamp() const
     return ss.str();
 }
 
-void Logger::WriteLog(const std::string& level, const std::string& logMessage)
-{
-    // 使用 std::lock_guard 
-    // 在離開函式後 _logMutex 自動解鎖
-    // 防止多個 Session 同時寫log造成錯亂
+void Logger::WriteLog(const std::string& level, const std::string& logMessage) {
+    // 離開函式後 _logMutex 自動解鎖
+    // 防止多個 Session 同時寫log 會bug
     std::lock_guard<std::mutex> lock(_logMutex);
 
-    // 看輸出
-    std::cout << "[" << GetTimestamp() << "] "
-              << "[" << std::setw(8) << std::left << level << "] "
-              << logMessage << std::endl;
+    // log顯示輸出 同時寫入檔案 
+    std::stringstream ss;
+    ss << "[" << GetTimestamp() << "] "
+       << "[" << std::setw(8) << std::left << level << "] "
+       << logMessage;
+    
+    std::string logLine = ss.str();
+
+    if (level == "ERROR") {
+        std::cerr << logLine << std::endl;
+    } 
+    else {
+        std::cout << logLine << std::endl;
+    }
+
+    if (_logFile.is_open()) {
+        _logFile << logLine << std::endl; 
+    }
     
 }
 
-void Logger::LogValidationResult(const std::string& sessionID, bool success, const std::string& reason)
-{
+void Logger::LogValidationResult(const std::string& sessionID, bool success, const std::string& reason) {
     std::stringstream ss;
     ss << "Session: [" << sessionID << "] "
        << (success ? "Validation SUCCESS" : "Validation FAILED")
@@ -54,24 +67,18 @@ void Logger::LogValidationResult(const std::string& sessionID, bool success, con
     WriteLog("VALIDATE", ss.str());
 }
 
-void Logger::LogInfo(const std::string& message)
-{
+void Logger::LogInfo(const std::string& message) {
     WriteLog("INFO", message);
 }
 
-void Logger::LogError(const std::string& message)
-{
-    std::lock_guard<std::mutex> lock(_logMutex);
-    std::cerr << "[" << GetTimestamp() << "] "
-              << "[ERROR   ] "
-              << message << std::endl;
+void Logger::LogError(const std::string& message) {
+    WriteLog("ERROR", message);
 }
 
 
-// --- 2. 離線訊息 ---
+// --- 離線訊息 ---
 
-void Logger::QueueMessageForOfflineTarget(const std::string& targetCompID, const FixMessage& msg)
-{
+void Logger::QueueMessageForOfflineTarget(const std::string& targetCompID, const FixMessage& msg) {
     // 鎖定佇列
     std::lock_guard<std::mutex> lock(_queueMutex);
 
@@ -82,8 +89,7 @@ void Logger::QueueMessageForOfflineTarget(const std::string& targetCompID, const
     LogInfo(ss.str());
 }
 
-bool Logger::HasPendingMessages(const std::string& targetCompID)
-{
+bool Logger::HasPendingMessages(const std::string& targetCompID) {
     // 鎖定佇列
     std::lock_guard<std::mutex> lock(_queueMutex);
 
@@ -97,16 +103,14 @@ bool Logger::HasPendingMessages(const std::string& targetCompID)
     return false;
 }
 
-std::vector<FixMessage> Logger::RetrievePendingMessages(const std::string& targetCompID)
-{
+std::vector<FixMessage> Logger::RetrievePendingMessages(const std::string& targetCompID) {
     // 鎖定佇列
     std::lock_guard<std::mutex> lock(_queueMutex);
 
     // 搜尋 map
     auto it = _pendingMessages.find(targetCompID);
 
-    if (it != _pendingMessages.end())
-    {
+    if (it != _pendingMessages.end()) {
         std::vector<FixMessage> messages = std::move(it->second);
         _pendingMessages.erase(it);
 
@@ -120,4 +124,28 @@ std::vector<FixMessage> Logger::RetrievePendingMessages(const std::string& targe
     }
 
     return std::vector<FixMessage>();
+}
+
+void Logger::PrintLogFileContents()
+{
+
+    std::lock_guard<std::mutex> lock(_logMutex);
+    
+    std::cout << "\n--- [START] Displaying Log File: " << _logFilename << " ---" << std::endl;
+
+    std::ifstream logFileIn(_logFilename);
+
+    if (!logFileIn.is_open()) {
+        std::cerr << "ERROR: Could not open log file for reading: " << _logFilename << std::endl;
+        std::cout << "--- [END] Log File Display ---" << std::endl;
+        return;
+    }
+
+    std::string line;
+    while (std::getline(logFileIn, line)) {
+        std::cout << line << std::endl;
+    }
+
+    logFileIn.close(); /
+    std::cout << "--- [END] Log File Display ---" << std::endl;
 }
