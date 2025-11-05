@@ -15,6 +15,9 @@ RUN apt-get update && \
     wget \
     libssl-dev \
     libxml2-dev \
+    libtool \
+    autoconf \
+    automake \
     && rm -rf /var/lib/apt/lists/*
 
 # install QuickFIX
