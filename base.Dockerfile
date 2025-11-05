@@ -1,11 +1,10 @@
-#  Base Image: C++ QuickFIX Runtime
+# Base Image: C++ QuickFIX & Qt6 Runtime
 FROM ubuntu:22.04 AS base
 
-LABEL maintainer="fix_system_dev"
+LABEL maintainer="fix_system"
 ENV DEBIAN_FRONTEND=noninteractive
 
-# basic system and tools 
-# 基礎系統與工具
+# Install basic system tools and dependencies
 RUN apt-get update && \
     apt-get install -y \
     build-essential \
@@ -15,12 +14,19 @@ RUN apt-get update && \
     wget \
     libssl-dev \
     libxml2-dev \
+    # Qt6 development
+    qt6-base-dev \
+    # Additional Qt6 modules if needed (QtNetwork is part of base-dev) \
     && rm -rf /var/lib/apt/lists/*
 
-# install QuickFIX
+# Install QuickFIX from source
 RUN git clone --depth 1 https://github.com/quickfix/quickfix.git /opt/quickfix && \
-    cd /opt/quickfix && ./bootstrap && ./configure && make && make install
+    cd /opt/quickfix && \
+    ./bootstrap && \
+    ./configure && \
+    make && \
+    make install
 
-# setting sharing environment
+# Set shared environment variables
 ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
 WORKDIR /app
