@@ -28,7 +28,7 @@ FixMessageType FixHelper::GetMsgType(const FixMessage& msg)
 
 bool FixHelper::IsRoutableAppMessage(FixMessageType msgType)
 {
-    // 檢查傳入的 enum 是否為定義的任一個
+    // check enum value
     switch (msgType)
     {
         case FixMessageType::NewOrder:

@@ -43,14 +43,14 @@ public:
 
     void LogError(const std::string& message);
 
-    // --- Â÷½u°T®§ ---
+    // --- offline msg ---
     void QueueMessageForOfflineTarget(const std::string& targetCompID, const FixMessage& msg);
 
     bool HasPendingMessages(const std::string& targetCompID);
 
     std::vector<FixMessage> RetrievePendingMessages(const std::string& targetCompID);
 
-    // --- ¬ö¿ýÀÉ®× ---
+    // --- record log ---
     void PrintLogFileContents();
 
 };// LOGGER_H_

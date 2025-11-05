@@ -5,12 +5,12 @@
 #include <map>
 
 enum class FixMessageType {
-    NewOrder = 'D',          // 35=D 委託
-    OrderCancelReplace = 'G',// 35=G 改單
-    OrderCancel = 'F',       // 35=F 刪單
-    ExecutionReport = '8',   // 35=8 回報(委託/成交)
-    CancelReject = '9',      // 35=9 刪改失敗
-    Unknown = '\0'           // undefined type
+    NewOrder = 'D',          // 35=D 
+    OrderCancelReplace = 'G',// 35=G 
+    OrderCancel = 'F',       // 35=F 
+    ExecutionReport = '8',   // 35=8 
+    CancelReject = '9',      // 35=9 
+    Unknown = '\0'           // other or undefined type
 };
 
 using FixMessage = std::map<int, std::string>;

@@ -75,7 +75,7 @@ void Logger::LogError(const std::string& message) {
 }
 
 
-// --- Â÷½u°T®§ ---
+// --- offline msg ---
 
 void Logger::QueueMessageForOfflineTarget(const std::string& targetCompID, const FixMessage& msg) {
     // lock
