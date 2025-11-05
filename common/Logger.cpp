@@ -23,21 +23,20 @@ std::string Logger::GetTimestamp() const {
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     std::stringstream ss;
-    // 格式 YYYY-MM-DD HH:MM:SS
+    // stand form YYYY-MM-DD HH:MM:SS
     ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S");
 
-    // 附加毫秒
+    // add ms
     ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
     
     return ss.str();
 }
 
 void Logger::WriteLog(const std::string& level, const std::string& logMessage) {
-    // 離開函式後 _logMutex 自動解鎖
-    // 防止多個 Session 同時寫log 會bug
+    // lock log to prevent concurrent write
     std::lock_guard<std::mutex> lock(_logMutex);
 
-    // log顯示輸出 同時寫入檔案 
+    // cout log and write to file
     std::stringstream ss;
     ss << "[" << GetTimestamp() << "] "
        << "[" << std::setw(8) << std::left << level << "] "
@@ -79,7 +78,7 @@ void Logger::LogError(const std::string& message) {
 // --- 離線訊息 ---
 
 void Logger::QueueMessageForOfflineTarget(const std::string& targetCompID, const FixMessage& msg) {
-    // 鎖定佇列
+    // lock
     std::lock_guard<std::mutex> lock(_queueMutex);
 
     _pendingMessages[targetCompID].push_back(msg);
@@ -90,10 +89,10 @@ void Logger::QueueMessageForOfflineTarget(const std::string& targetCompID, const
 }
 
 bool Logger::HasPendingMessages(const std::string& targetCompID) {
-    // 鎖定佇列
+    // lock
     std::lock_guard<std::mutex> lock(_queueMutex);
 
-    // 搜尋 map
+    // search map
     auto it = _pendingMessages.find(targetCompID);
 
     if (it != _pendingMessages.end() && !it->second.empty()) {
@@ -104,10 +103,10 @@ bool Logger::HasPendingMessages(const std::string& targetCompID) {
 }
 
 std::vector<FixMessage> Logger::RetrievePendingMessages(const std::string& targetCompID) {
-    // 鎖定佇列
+    // lock
     std::lock_guard<std::mutex> lock(_queueMutex);
 
-    // 搜尋 map
+    // search map
     auto it = _pendingMessages.find(targetCompID);
 
     if (it != _pendingMessages.end()) {
@@ -146,6 +145,6 @@ void Logger::PrintLogFileContents()
         std::cout << line << std::endl;
     }
 
-    logFileIn.close(); /
+    logFileIn.close(); 
     std::cout << "--- [END] Log File Display ---" << std::endl;
 }

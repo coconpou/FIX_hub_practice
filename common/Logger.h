@@ -19,13 +19,13 @@ private:
     std::string _logFilename;
     std::ofstream _logFile;
 
-    // get時間戳記 "YYYY-MM-DD HH:MM:SS"
+    // get time stamp: "YYYY-MM-DD HH:MM:SS"
 
     std::string GetTimestamp() const;
 
     void WriteLog(const std::string& level, const std::string& logMessage);
 
-    // 防止多線程同時寫入
+    // prevent concurrent write
     std::mutex _logMutex;
 
     std::map<std::string, std::vector<FixMessage>> _pendingMessages;
