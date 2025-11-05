@@ -1,17 +1,16 @@
-#  FIX Server Image
-FROM base AS server
+# Dockerfile for FixServer
 
+FROM base
 WORKDIR /app/server
 
-# 複製原始碼與設定
-COPY ../common /app/common
+# Copy project files
 COPY . /app/server
 
-# 編譯 server
-RUN make clean && make server
+# Build the server project
+RUN make clean && make
 
-# 開放 port
-EXPOSE 9876
+# Expose server port
+EXPOSE 5555
 
-# 啟動命令
-CMD ["./fix_server"]
+# Run server
+CMD ["./build/fix_server"]
