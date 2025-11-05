@@ -20,7 +20,8 @@
 
 ## 📂 專案結構
 
-fix_system/
+```text
+FIX_system/
 ├─ common/ # 共用模組 (FixHelper, Logger)
 ├─ server/ # Server 專案
 │ ├─ src/
@@ -40,6 +41,7 @@ fix_system/
 ├─ base.Dockerfile # 共用基底映像檔
 ├─ Makefile # 頂層建置控制
 └─ docker-compose.yml # 同時啟動 server / client 測試用
+```
 
 ---
 

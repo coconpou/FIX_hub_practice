@@ -1,14 +1,12 @@
-#  FIX Client Image
-FROM base AS client
-
+# Dockerfile for FixClient
+FROM base
 WORKDIR /app/client
 
-# 複製原始碼與設定
-COPY ../common /app/common
+# Copy project files
 COPY . /app/client
 
-# 編譯 client
-RUN make clean && make client
+# Build the client project
+RUN make clean && make
 
-# 預設啟動 client 程式
-CMD ["./fix_client"]
+# Run client after a short delay (wait for server)
+CMD sleep 2 && ./build/fix_client
