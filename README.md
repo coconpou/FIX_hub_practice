@@ -49,7 +49,7 @@ FIX_hub/
 
 - **OS:** Ubuntu 22.04 或相容版本
 - **Compiler:** g++ (C++17 以上)
-- **Library:** QuickFIX, pthread
+- **Library:** QtNetwork , QuickFIX, pthread
 - **Build System:** Make
 - **Container:** Docker + Docker Compose
 

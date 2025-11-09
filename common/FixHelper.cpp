@@ -1,65 +1,46 @@
 #include "FixHelper.h"
 
-FixMessageType FixHelper::GetMsgType(const FixMessage& msg) 
-{
+using namespace std;
 
-    std::string msgTypeStr = FixHelper::GetTagValue(msg, TAG_MSG_TYPE);
-    
-    if (msgTypeStr.empty() || msgTypeStr.length() > 1) {
-        return FixMessageType::Unknown;
-    }
+// Get message type from tag 35
+FixMessageType FixHelper::GetMsgType(const FixMessage &msg) {
+  static const unordered_map<char, FixMessageType> typeMap = {
+      {'D', FixMessageType::NewOrder},
+      {'G', FixMessageType::OrderCancelReplace},
+      {'F', FixMessageType::OrderCancel},
+      {'8', FixMessageType::ExecutionReport},
+      {'9', FixMessageType::CancelReject}};
 
-    // string[0] == char
-    char msgTypeChar = msgTypeStr[0];
+  auto it = msg.find(TAG_MSG_TYPE);
+  if (it == msg.end() || it->second.size() != 1)
+    return FixMessageType::Unknown;
 
-    switch (msgTypeChar) 
-    {
-        case 'D': return FixMessageType::NewOrder;
-        case 'G': return FixMessageType::OrderCancelReplace;
-        case 'F': return FixMessageType::OrderCancel;
-        case '8': return FixMessageType::ExecutionReport;
-        case '9': return FixMessageType::CancelReject;
-
-        default:
-            return FixMessageType::Unknown;
-    }
+  char c = it->second[0];
+  auto found = typeMap.find(c);
+  return (found != typeMap.end()) ? found->second : FixMessageType::Unknown;
 }
 
+// Check if message type is routable
+bool FixHelper::IsRoutableAppMessage(FixMessageType msgType) {
+  static const unordered_set<FixMessageType> routable = {
+      FixMessageType::NewOrder,
+      FixMessageType::OrderCancelReplace,
+      FixMessageType::OrderCancel,
+      FixMessageType::ExecutionReport,
+      FixMessageType::CancelReject};
 
-bool FixHelper::IsRoutableAppMessage(FixMessageType msgType)
-{
-    // check enum value
-    switch (msgType)
-    {
-        case FixMessageType::NewOrder:
-        case FixMessageType::OrderCancelReplace:
-        case FixMessageType::OrderCancel:
-        case FixMessageType::ExecutionReport:
-        case FixMessageType::CancelReject:
-            return true;
-        
-        default:
-
-            return false;
-    }
+  return routable.count(msgType) > 0;
 }
 
-
-std::string FixHelper::GetTagValue(const FixMessage& msg, int tag)
-{
-
-    auto it = msg.find(tag);
-
-    if (it != msg.end()) {
-        return it->second;
-    }
-
-    return "";
+// Get value of tag
+string FixHelper::GetTagValue(const FixMessage &msg, int tag) {
+  auto it = msg.find(tag);
+  if (it != msg.end())
+    return it->second;
+  return "";
 }
 
-
-void FixHelper::SetTagValue(FixMessage& msg, int tag, const std::string& value)
-{
-
-    msg[tag] = value;
+// Set value of tag
+void FixHelper::SetTagValue(FixMessage &msg, int tag, const string &value) {
+  msg[tag] = value;
 }

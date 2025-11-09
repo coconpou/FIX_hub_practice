@@ -1,150 +1,123 @@
 #include "Logger.h"
-#include <fstream>
 
-Logger::Logger(const std::string& logFilename) {
-    _logFile.open(_logFilename, std::ios::out | std::ios::app);
-    if (!_logFile.is_open()) {
-        std::cerr << "CRITICAL ERROR: Could not open log file for writing: " 
-                  << _logFilename << std::endl;
-    }
+using namespace std;
 
-    LogInfo("Logger system initialized.");
+// Constructor
+Logger::Logger(const string &logFilename) : logFilename_(logFilename) {
+  logFile_.open(logFilename_, ios::out | ios::app);
+  if (!logFile_.is_open()) {
+    cerr << "CRITICAL ERROR: Could not open log file: " << logFilename_ << endl;
+  }
+  LogInfo("Logger system initialized.");
 }
 
+// Destructor
 Logger::~Logger() {
-    LogInfo("Logger system shutting down.");
-    
-    if (_logFile.is_open()) { _logFile.close(); }
+  LogInfo("Logger system shutting down.");
+  if (logFile_.is_open()) logFile_.close();
 }
 
-std::string Logger::GetTimestamp() const {
-    auto now = std::chrono::system_clock::now();
-    auto in_time_t = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+// Get current timestamp "YYYY-MM-DD HH:MM:SS.mmm"
+string Logger::GetTimestamp() const {
+  auto now = chrono::system_clock::now();
+  auto in_time_t = chrono::system_clock::to_time_t(now);
+  auto ms = chrono::duration_cast<chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
-    std::stringstream ss;
-    // stand form YYYY-MM-DD HH:MM:SS
-    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S");
-
-    // add ms
-    ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
-    
-    return ss.str();
+  stringstream ss;
+  ss << put_time(localtime(&in_time_t), "%Y-%m-%d %H:%M:%S")
+     << '.' << setfill('0') << setw(3) << ms.count();
+  return ss.str();
 }
 
-void Logger::WriteLog(const std::string& level, const std::string& logMessage) {
-    // lock log to prevent concurrent write
-    std::lock_guard<std::mutex> lock(_logMutex);
+// Write formatted log line to console and file
+void Logger::WriteLog(const string &level, const string &logMessage) {
+  lock_guard<mutex> lock(logMutex_);
+  stringstream ss;
+  ss << "[" << GetTimestamp() << "] "
+     << "[" << setw(8) << left << level << "] "
+     << logMessage;
 
-    // cout log and write to file
-    std::stringstream ss;
-    ss << "[" << GetTimestamp() << "] "
-       << "[" << std::setw(8) << std::left << level << "] "
-       << logMessage;
-    
-    std::string logLine = ss.str();
+  string logLine = ss.str();
 
-    if (level == "ERROR") {
-        std::cerr << logLine << std::endl;
-    } 
-    else {
-        std::cout << logLine << std::endl;
-    }
+  if (level == "ERROR")
+    cerr << logLine << endl;
+  else
+    cout << logLine << endl;
 
-    if (_logFile.is_open()) {
-        _logFile << logLine << std::endl; 
-    }
-    
+  if (logFile_.is_open()) logFile_ << logLine << endl;
 }
 
-void Logger::LogValidationResult(const std::string& sessionID, bool success, const std::string& reason) {
-    std::stringstream ss;
-    ss << "Session: [" << sessionID << "] "
-       << (success ? "Validation SUCCESS" : "Validation FAILED")
-       << ". Reason: " << reason;
-    
-    WriteLog("VALIDATE", ss.str());
+// Log validation result
+void Logger::LogValidationResult(const string &sessionID, bool success, const string &reason) {
+  stringstream ss;
+  ss << "Session [" << sessionID << "] "
+     << (success ? "Validation SUCCESS" : "Validation FAILED")
+     << ". Reason: " << reason;
+  WriteLog("VALIDATE", ss.str());
 }
 
-void Logger::LogInfo(const std::string& message) {
-    WriteLog("INFO", message);
+// Log info message
+void Logger::LogInfo(const string &message) {
+  WriteLog("INFO", message);
 }
 
-void Logger::LogError(const std::string& message) {
-    WriteLog("ERROR", message);
+// Log error message
+void Logger::LogError(const string &message) {
+  WriteLog("ERROR", message);
 }
 
+// Queue FIX message for offline target
+void Logger::QueueMessageForOfflineTarget(const string &targetCompID, const FixMessage &msg) {
+  lock_guard<mutex> lock(queueMutex_);
+  pendingMessages_[targetCompID].push_back(msg);
 
-// --- offline msg ---
+  stringstream ss;
+  ss << "Target [" << targetCompID << "] is offline. Queuing message.";
+  LogInfo(ss.str());
+}
 
-void Logger::QueueMessageForOfflineTarget(const std::string& targetCompID, const FixMessage& msg) {
-    // lock
-    std::lock_guard<std::mutex> lock(_queueMutex);
+// Check if target has pending messages
+bool Logger::HasPendingMessages(const string &targetCompID) {
+  lock_guard<mutex> lock(queueMutex_);
+  auto it = pendingMessages_.find(targetCompID);
+  return (it != pendingMessages_.end() && !it->second.empty());
+}
 
-    _pendingMessages[targetCompID].push_back(msg);
+// Retrieve pending messages for target
+vector<FixMessage> Logger::RetrievePendingMessages(const string &targetCompID) {
+  lock_guard<mutex> lock(queueMutex_);
+  auto it = pendingMessages_.find(targetCompID);
 
-    std::stringstream ss;
-    ss << "Target [" << targetCompID << "] is offline. Queuing message.";
+  if (it != pendingMessages_.end()) {
+    vector<FixMessage> messages = move(it->second);
+    pendingMessages_.erase(it);
+
+    stringstream ss;
+    ss << "Target [" << targetCompID << "] is online. Retrieved "
+       << messages.size() << " messages.";
     LogInfo(ss.str());
+
+    return messages;
+  }
+
+  return {};
 }
 
-bool Logger::HasPendingMessages(const std::string& targetCompID) {
-    // lock
-    std::lock_guard<std::mutex> lock(_queueMutex);
+// Print log file contents
+void Logger::PrintLogFileContents() {
+  lock_guard<mutex> lock(logMutex_);
 
-    // search map
-    auto it = _pendingMessages.find(targetCompID);
+  cout << "\n--- [START] Displaying Log File: " << logFilename_ << " ---" << endl;
+  ifstream logFileIn(logFilename_);
+  if (!logFileIn.is_open()) {
+    cerr << "ERROR: Could not open log file: " << logFilename_ << endl;
+    cout << "--- [END] Log File Display ---" << endl;
+    return;
+  }
 
-    if (it != _pendingMessages.end() && !it->second.empty()) {
-        return true;
-    }
-    
-    return false;
-}
+  string line;
+  while (getline(logFileIn, line)) cout << line << endl;
+  logFileIn.close();
 
-std::vector<FixMessage> Logger::RetrievePendingMessages(const std::string& targetCompID) {
-    // lock
-    std::lock_guard<std::mutex> lock(_queueMutex);
-
-    // search map
-    auto it = _pendingMessages.find(targetCompID);
-
-    if (it != _pendingMessages.end()) {
-        std::vector<FixMessage> messages = std::move(it->second);
-        _pendingMessages.erase(it);
-
-
-        std::stringstream ss;
-        ss << "Target [" << targetCompID << "] is online. Retrieving " 
-           << messages.size() << " pending messages.";
-        LogInfo(ss.str());
-
-        return messages;
-    }
-
-    return std::vector<FixMessage>();
-}
-
-void Logger::PrintLogFileContents()
-{
-
-    std::lock_guard<std::mutex> lock(_logMutex);
-    
-    std::cout << "\n--- [START] Displaying Log File: " << _logFilename << " ---" << std::endl;
-
-    std::ifstream logFileIn(_logFilename);
-
-    if (!logFileIn.is_open()) {
-        std::cerr << "ERROR: Could not open log file for reading: " << _logFilename << std::endl;
-        std::cout << "--- [END] Log File Display ---" << std::endl;
-        return;
-    }
-
-    std::string line;
-    while (std::getline(logFileIn, line)) {
-        std::cout << line << std::endl;
-    }
-
-    logFileIn.close(); 
-    std::cout << "--- [END] Log File Display ---" << std::endl;
+  cout << "--- [END] Log File Display ---" << endl;
 }

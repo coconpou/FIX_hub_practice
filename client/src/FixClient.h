@@ -4,21 +4,32 @@
 #include <QObject>
 #include <QTcpSocket>
 
+// TCP client for FIX connections
 class FixClient : public QObject {
   Q_OBJECT
 
  public:
-  explicit FixClient(QObject *parent = nullptr);             // Constructor
-  void connectToServer(const QString &host, quint16 port);   // Connect to server
-  void sendMessage(const QByteArray &data);                  // Send message to server
+  // Constructor
+  explicit FixClient(QObject *parent = nullptr);
+
+  // Connect to FIX server
+  void connectToServer(const QString &host, quint16 port);
+
+  // Send FIX message to server
+  void sendMessage(const QByteArray &data);
 
  private slots:
-  void onConnected();      // Called when connected
-  void onReadyRead();      // Called when data received
-  void onDisconnected();   // Called when disconnected
+  // Called when connection established
+  void onConnected();
+
+  // Called when data is received
+  void onReadyRead();
+
+  // Called when disconnected
+  void onDisconnected();
 
  private:
-  QTcpSocket m_socket;   // TCP socket instance
+  QTcpSocket socket_;   // TCP socket instance
 };
 
 #endif   // FIXCLIENT_H

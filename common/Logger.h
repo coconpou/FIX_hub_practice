@@ -1,58 +1,60 @@
 #ifndef LOGGER_H_
 #define LOGGER_H_
 
+#include <chrono>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <map>
-#include <mutex>      
-#include <iostream>   
-#include <sstream>    
-#include <chrono>     
-#include <iomanip>    
-#include <fstream>
 
+// FIX message alias
 using FixMessage = std::map<int, std::string>;
 
 class Logger {
-private:
+ private:
+  std::string logFilename_;                                          // Log file name
+  std::ofstream logFile_;                                            // Log file stream
+  std::mutex logMutex_;                                              // Protects log writing
+  std::map<std::string, std::vector<FixMessage>> pendingMessages_;   // Offline FIX messages
+  std::mutex queueMutex_;                                            // Protects pending queue
 
-    std::string _logFilename;
-    std::ofstream _logFile;
+  // Get timestamp in format "YYYY-MM-DD HH:MM:SS"
+  std::string GetTimestamp() const;
 
-    // get time stamp: "YYYY-MM-DD HH:MM:SS"
+  // Write a log entry to file
+  void WriteLog(const std::string &level, const std::string &logMessage);
 
-    std::string GetTimestamp() const;
+ public:
+  // Constructor
+  Logger(const std::string &logFilename = "fix_hub.log");
 
-    void WriteLog(const std::string& level, const std::string& logMessage);
+  // Destructor
+  ~Logger();
 
-    // prevent concurrent write
-    std::mutex _logMutex;
+  // Log validation result
+  void LogValidationResult(const std::string &sessionID, bool success, const std::string &reason);
 
-    std::map<std::string, std::vector<FixMessage>> _pendingMessages;
+  // Log info message
+  void LogInfo(const std::string &message);
 
-    std::mutex _queueMutex;
-public:
-    Logger(const std::string& logFilename = "fix_hub.log");
+  // Log error message
+  void LogError(const std::string &message);
 
-    ~Logger();
+  // Queue a FIX message for offline target
+  void QueueMessageForOfflineTarget(const std::string &targetCompID, const FixMessage &msg);
 
-    // --- ¤é»x¥\¯à ---
-    void LogValidationResult(const std::string& sessionID, bool success, const std::string& reason);
+  // Check if target has pending messages
+  bool HasPendingMessages(const std::string &targetCompID);
 
-    void LogInfo(const std::string& message);
+  // Retrieve pending messages for target
+  std::vector<FixMessage> RetrievePendingMessages(const std::string &targetCompID);
 
-    void LogError(const std::string& message);
+  // Print all log file contents
+  void PrintLogFileContents();
+};
 
-    // --- offline msg ---
-    void QueueMessageForOfflineTarget(const std::string& targetCompID, const FixMessage& msg);
-
-    bool HasPendingMessages(const std::string& targetCompID);
-
-    std::vector<FixMessage> RetrievePendingMessages(const std::string& targetCompID);
-
-    // --- record log ---
-    void PrintLogFileContents();
-
-};// LOGGER_H_
-
-#endif 
+#endif   // LOGGER_H_

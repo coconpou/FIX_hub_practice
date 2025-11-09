@@ -3,20 +3,25 @@
 #include <QDebug>
 #include <QThread>
 
+using namespace std;
+
+// Constructor
 FixClient::FixClient(QObject *parent) : QObject(parent) {
-  connect(&m_socket, &QTcpSocket::connected, this, &FixClient::onConnected);         // Handle connection event
-  connect(&m_socket, &QTcpSocket::readyRead, this, &FixClient::onReadyRead);         // Handle incoming data
-  connect(&m_socket, &QTcpSocket::disconnected, this, &FixClient::onDisconnected);   // Handle disconnection
+  connect(&socket_, &QTcpSocket::connected, this, &FixClient::onConnected);
+  connect(&socket_, &QTcpSocket::readyRead, this, &FixClient::onReadyRead);
+  connect(&socket_, &QTcpSocket::disconnected, this, &FixClient::onDisconnected);
 }
 
+// Connect to server
 void FixClient::connectToServer(const QString &host, quint16 port) {
-  qInfo() << "Connecting to" << host << ":" << port;   // Log connection attempt
-  m_socket.connectToHost(host, port);                  // Connect to server
+  qInfo() << "Connecting to" << host << ":" << port;
+  socket_.connectToHost(host, port);
 }
 
+// Send message to server
 void FixClient::sendMessage(const QByteArray &data) {
-  if (m_socket.state() != QAbstractSocket::ConnectedState) {
-    qWarning() << "Not connected to server.";   // Warn if not connected
+  if (socket_.state() != QAbstractSocket::ConnectedState) {
+    qWarning() << "Not connected to server.";
     return;
   }
 
@@ -24,30 +29,34 @@ void FixClient::sendMessage(const QByteArray &data) {
   int offset = 0;
 
   while (offset < data.size()) {
-    QByteArray part = data.mid(offset, PACKET_SIZE);   // Extract data chunk
+    QByteArray part = data.mid(offset, PACKET_SIZE);
     offset += PACKET_SIZE;
 
-    quint32 len = part.size();                                        // Packet length
-    QByteArray header(reinterpret_cast<char *>(&len), sizeof(len));   // Header for packet
-    m_socket.write(header);                                           // Send header
-    m_socket.write(part);                                             // Send body
-    m_socket.flush();                                                 // Ensure immediate send
+    quint32 len = part.size();
+    QByteArray header(reinterpret_cast<char *>(&len), sizeof(len));
 
-    qInfo() << "[Client] Sent packet:" << part;   // Log sent packet
-    QThread::msleep(50);                          // Simulate delay between packets
+    socket_.write(header);
+    socket_.write(part);
+    socket_.flush();
+
+    qInfo() << "[Client] Sent packet:" << part;
+    QThread::msleep(50);   // Simulate delay between packets
   }
 }
 
+// Called when connection established
 void FixClient::onConnected() {
-  qInfo() << "Connected to server.";                                         // Log connection success
-  QByteArray message = "This is a long message sent in multiple packets.";   // Sample message
-  sendMessage(message);                                                      // Send demo message after connecting
+  qInfo() << "Connected to server.";
+  QByteArray message = "This is a long message sent in multiple packets.";
+  sendMessage(message);
 }
 
+// Called when data received
 void FixClient::onReadyRead() {
-  qInfo() << "[Client] Server says:" << m_socket.readAll();   // Print server response
+  qInfo() << "[Client] Server says:" << socket_.readAll();
 }
 
+// Called when disconnected
 void FixClient::onDisconnected() {
-  qInfo() << "Disconnected from server.";   // Log disconnection
+  qInfo() << "Disconnected from server.";
 }

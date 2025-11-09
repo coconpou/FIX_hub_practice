@@ -2,6 +2,7 @@
 
 #include "FixServer.h"
 
+// Entry point
 int main(int argc, char *argv[]) {
   QCoreApplication app(argc, argv);   // Initialize Qt core application
 
