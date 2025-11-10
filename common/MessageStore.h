@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "quickfix/Message.h"
-
 // Singleton message store for offline FIX messages
 class MessageStore {
  public:
@@ -19,8 +17,8 @@ class MessageStore {
   // Initialize message store with root path
   void init(const std::string &storagePath);
 
-  // Store a FIX message for offline target
-  bool storeMessage(const std::string &targetCompId, const FIX::Message &message);
+  // Store a raw FIX message string for offline target
+  bool storeMessage(const std::string &targetCompId, const std::string &rawMessage);
 
   // Retrieve and clear queued messages for target
   std::vector<std::string> getAndClearQueuedMessages(const std::string &targetCompId);

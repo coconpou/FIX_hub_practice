@@ -34,8 +34,8 @@ void MessageStore::init(const string &storagePath) {
   }
 }
 
-// Store FIX message for offline target
-bool MessageStore::storeMessage(const string &targetCompId, const FIX::Message &message) {
+// Store raw FIX message string for offline target
+bool MessageStore::storeMessage(const string &targetCompId, const string &rawMessage) {
   if (!initialized_) return false;
 
   fs::path targetDir = fs::path(storagePath_) / targetCompId;
@@ -43,25 +43,16 @@ bool MessageStore::storeMessage(const string &targetCompId, const FIX::Message &
   try {
     if (!fs::exists(targetDir)) fs::create_directories(targetDir);
 
-    // Generate unique filename (timestamp + sequence number)
+    // Generate unique filename (timestamp)
     auto now = chrono::system_clock::now();
     auto timestamp = chrono::duration_cast<chrono::milliseconds>(now.time_since_epoch()).count();
 
-    string seqNumStr;
-    try {
-      FIX::MsgSeqNum seqNum;
-      message.getHeader().getField(seqNum);
-      seqNumStr = to_string(seqNum.getValue());
-    } catch (const FIX::FieldNotFound &) {
-      seqNumStr = "unknown";
-    }
-
-    string filename = to_string(timestamp) + "_" + seqNumStr + ".fix";
+    string filename = to_string(timestamp) + ".fix";
     fs::path filePath = targetDir / filename;
 
     ofstream file(filePath);
     if (file.is_open()) {
-      file << message.toString();
+      file << rawMessage;
       file.close();
       return true;
     }

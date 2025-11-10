@@ -58,6 +58,27 @@ void ConfigManager::load(const string &configFile) {
   }
 }
 
+// Load allowed CompIDs from a separate file
+void ConfigManager::loadAllowedCompIds(const string &filePath) {
+  ifstream file(filePath);
+  if (!file.is_open()) {
+    throw runtime_error("Failed to open allowed CompIDs file: " + filePath);
+  }
+
+  try {
+    json compIdData;
+    file >> compIdData;
+
+    if (compIdData.contains("allowed_comp_ids")) {
+      for (const auto &id : compIdData["allowed_comp_ids"]) {
+        allowedCompIds_.insert(id.get<string>());
+      }
+    }
+  } catch (const json::parse_error &e) {
+    throw runtime_error("Failed to parse allowed CompIDs file: " + string(e.what()));
+  }
+}
+
 // Check if CompID is allowed
 bool ConfigManager::isCompIdAllowed(const string &compId) const {
   return allowedCompIds_.count(compId) > 0;

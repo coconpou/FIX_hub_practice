@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QTcpSocket>
+#include <string>
 
 // TCP client for FIX connections
 class FixClient : public QObject {
@@ -12,11 +13,14 @@ class FixClient : public QObject {
   // Constructor
   explicit FixClient(QObject *parent = nullptr);
 
-  // Connect to FIX server
-  void connectToServer(const QString &host, quint16 port);
+  // Load configuration from file
+  bool loadConfig(const QString &filePath);
 
-  // Send FIX message to server
-  void sendMessage(const QByteArray &data);
+  // Connect to FIX server using loaded config
+  void connectToServer();
+
+  // Send a test application message
+  void sendTestMessage();
 
  private slots:
   // Called when connection established
@@ -29,7 +33,17 @@ class FixClient : public QObject {
   void onDisconnected();
 
  private:
-  QTcpSocket socket_;   // TCP socket instance
+  // Send a raw FIX message string to the server
+  void sendMessage(const std::string &rawMessage);
+
+  QTcpSocket socket_;          // TCP socket instance
+  QByteArray buffer_;          // Data buffer for incoming messages
+
+  // Configuration
+  QString compId_;
+  QString targetCompId_;
+  QString serverHost_;
+  quint16 serverPort_;
 };
 
 #endif   // FIXCLIENT_H

@@ -1,12 +1,31 @@
-# Dockerfile for FixClient
-FROM base
+# Stage 1: Build the application
+FROM fix-hub-base:latest AS builder
+
+# Copy all source code
+COPY . /app
+
+# Build the client
 WORKDIR /app/client
+RUN make
 
-# Copy project files
-COPY . /app/client
+# Stage 2: Create the final, lightweight image
+FROM ubuntu:22.04
 
-# Build the client project
-RUN make clean && make
+# Install only runtime dependencies
+RUN apt-get update && \
+    apt-get install -y libqt6core6 libqt6network6 && \
+    rm -rf /var/lib/apt/lists/*
 
-# Run client after a short delay (wait for server)
-CMD sleep 2 && ./build/fix_client
+WORKDIR /app
+
+# Copy the compiled binary from the builder stage
+COPY --from=builder /app/client/build/client .
+
+# Copy the default config file (will be overridden by docker-compose volumes)
+COPY client/config/fix_client.cfg ./config/
+
+# Set environment variable for shared libraries
+ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
+
+# Default command (can be overridden in docker-compose)
+CMD ["./client"]

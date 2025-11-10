@@ -1,13 +1,23 @@
 #include <QCoreApplication>
+#include <QDebug>
+#include <QTimer>
 
 #include "FixClient.h"
 
 // Entry point
 int main(int argc, char *argv[]) {
-  QCoreApplication app(argc, argv);   // Initialize Qt core application
+  QCoreApplication app(argc, argv);
 
-  FixClient client;                            // Create FIX client instance
-  client.connectToServer("127.0.0.1", 5555);   // Connect to FIX server
+  FixClient client;
+  if (!client.loadConfig("config/fix_client.cfg")) {
+    qCritical() << "Failed to load configuration. Exiting.";
+    return 1;
+  }
 
-  return app.exec();   // Start event loop
+  client.connectToServer();
+
+  // Use a timer to send a test message after 2 seconds
+  QTimer::singleShot(2000, &client, &FixClient::sendTestMessage);
+
+  return app.exec();
 }

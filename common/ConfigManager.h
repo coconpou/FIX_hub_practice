@@ -36,6 +36,9 @@ class ConfigManager {
   // Load configuration file
   void load(const std::string &configFile);
 
+  // Load allowed CompIDs from a separate file
+  void loadAllowedCompIds(const std::string &filePath);
+
   // Check if CompID is allowed
   bool isCompIdAllowed(const std::string &compId) const;
 

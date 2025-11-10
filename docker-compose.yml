@@ -1,27 +1,51 @@
 version: "3.9"
 
 services:
-  server:
-    image: fix_server
+  # This service's only purpose is to build the base image
+  # which the other services will use in their FROM line.
+  base:
+    image: fix-hub-base:latest
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: base.Dockerfile
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     container_name: fix_server
     ports:
       - "5555:5555"
     networks:
       - fixnet
-
-  client:
-    image: fix_client
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-    container_name: fix_client
     depends_on:
-      - server
+      - base
+
+  client-a:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: client_a
+    volumes:
+      # Mount the specific config file for client A
+      - ./client_a.cfg:/app/config/fix_client.cfg:ro
     networks:
       - fixnet
+    depends_on:
+      - server
+
+  client-b:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: client_b
+    volumes:
+      # Mount the specific config file for client B
+      - ./client_b.cfg:/app/config/fix_client.cfg:ro
+    networks:
+      - fixnet
+    depends_on:
+      - server
 
 networks:
   fixnet:
