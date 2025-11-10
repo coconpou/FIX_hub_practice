@@ -1,60 +1,64 @@
-#ifndef LOGGER_H_
-#define LOGGER_H_
+#ifndef LOGGER_H
+#define LOGGER_H
 
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <map>
 #include <mutex>
 #include <sstream>
 #include <string>
-#include <vector>
 
-// FIX message alias
-using FixMessage = std::map<int, std::string>;
-
-class Logger {
- private:
-  std::string logFilename_;                                          // Log file name
-  std::ofstream logFile_;                                            // Log file stream
-  std::mutex logMutex_;                                              // Protects log writing
-  std::map<std::string, std::vector<FixMessage>> pendingMessages_;   // Offline FIX messages
-  std::mutex queueMutex_;                                            // Protects pending queue
-
-  // Get timestamp in format "YYYY-MM-DD HH:MM:SS"
-  std::string GetTimestamp() const;
-
-  // Write a log entry to file
-  void WriteLog(const std::string &level, const std::string &logMessage);
-
- public:
-  // Constructor
-  Logger(const std::string &logFilename = "fix_hub.log");
-
-  // Destructor
-  ~Logger();
-
-  // Log validation result
-  void LogValidationResult(const std::string &sessionID, bool success, const std::string &reason);
-
-  // Log info message
-  void LogInfo(const std::string &message);
-
-  // Log error message
-  void LogError(const std::string &message);
-
-  // Queue a FIX message for offline target
-  void QueueMessageForOfflineTarget(const std::string &targetCompID, const FixMessage &msg);
-
-  // Check if target has pending messages
-  bool HasPendingMessages(const std::string &targetCompID);
-
-  // Retrieve pending messages for target
-  std::vector<FixMessage> RetrievePendingMessages(const std::string &targetCompID);
-
-  // Print all log file contents
-  void PrintLogFileContents();
+// Log level definition
+enum class LogLevel {
+  DEBUG,
+  INFO,
+  WARN,
+  ERROR
 };
 
-#endif   // LOGGER_H_
+// Thread-safe singleton logger
+class Logger {
+ public:
+  // Get singleton instance
+  static Logger &instance();
+
+  // Delete copy constructor and assignment
+  Logger(const Logger &) = delete;
+  Logger &operator=(const Logger &) = delete;
+
+  // Initialize logger with file path and minimum level
+  void init(const std::string &logFilename, LogLevel level = LogLevel::INFO);
+
+  // Log debug message
+  void debug(const std::string &message);
+
+  // Log info message
+  void info(const std::string &message);
+
+  // Log warning message
+  void warn(const std::string &message);
+
+  // Log error message
+  void error(const std::string &message);
+
+ private:
+  // Private constructor
+  Logger() = default;
+
+  // Destructor (handled by singleton lifecycle)
+  ~Logger();
+
+  // Core logging function
+  void log(LogLevel level, const std::string &message);
+
+  // Convert LogLevel to string
+  std::string levelToString(LogLevel level);
+
+  std::ofstream logFile_;                // Output file stream
+  LogLevel minLevel_ = LogLevel::INFO;   // Minimum log level
+  std::mutex mutex_;                     // Thread-safety lock
+  bool initialized_ = false;             // Initialization flag
+};
+
+#endif   // LOGGER_H
