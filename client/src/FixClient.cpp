@@ -1,11 +1,12 @@
 #include "FixClient.h"
-#include "json.hpp"
 
 #include <QDebug>
 #include <QThread>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+
+#include "common/json.hpp"
 
 using namespace std;
 using json = nlohmann::json;
@@ -44,8 +45,8 @@ bool FixClient::loadConfig(const QString &filePath) {
     serverPort_ = configData.value("ServerPort", 5555);
 
     if (compId_.isEmpty()) {
-        qCritical() << "CompID is missing in config file.";
-        return false;
+      qCritical() << "CompID is missing in config file.";
+      return false;
     }
 
   } catch (const json::parse_error &e) {
@@ -55,12 +56,11 @@ bool FixClient::loadConfig(const QString &filePath) {
   return true;
 }
 
-
 // Connect to server
 void FixClient::connectToServer() {
   if (serverHost_.isEmpty() || serverPort_ == 0) {
-      qCritical() << "Server configuration is not loaded or invalid.";
-      return;
+    qCritical() << "Server configuration is not loaded or invalid.";
+    return;
   }
   qInfo() << "Connecting to" << serverHost_ << ":" << serverPort_ << "with CompID:" << compId_;
   socket_.connectToHost(serverHost_, serverPort_);
@@ -68,26 +68,22 @@ void FixClient::connectToServer() {
 
 // Send a test application message
 void FixClient::sendTestMessage() {
-    if (targetCompId_.isEmpty()) {
-        qInfo() << "No TargetCompID specified, skipping test message.";
-        return;
-    }
-    qInfo() << "Sending a test New Order message to" << targetCompId_;
-    
-    auto now = chrono::system_clock::now();
-    auto in_time_t = chrono::system_clock::to_time_t(now);
-    stringstream ss;
-    ss << put_time(gmtime(&in_time_t), "%Y%m%d-%H:%M:%S");
-    string timestamp = ss.str();
+  if (targetCompId_.isEmpty()) {
+    qInfo() << "No TargetCompID specified, skipping test message.";
+    return;
+  }
+  qInfo() << "Sending a test New Order message to" << targetCompId_;
 
-    map<int, string> fields = {
-        {8, "FIX.4.4"}, {35, "D"}, {49, compId_.toStdString()}, {56, "SERVER"},
-        {128, targetCompId_.toStdString()}, {34, "2"}, {52, timestamp},
-        {11, "TEST_ORDER_123"}, {55, "AAPL"}, {54, "1"}, {38, "100"}, {40, "2"}
-    };
-    sendMessage(buildFixString(fields));
+  auto now = chrono::system_clock::now();
+  auto in_time_t = chrono::system_clock::to_time_t(now);
+  stringstream ss;
+  ss << put_time(gmtime(&in_time_t), "%Y%m%d-%H:%M:%S");
+  string timestamp = ss.str();
+
+  map<int, string> fields = {
+      {8, "FIX.4.4"}, {35, "D"}, {49, compId_.toStdString()}, {56, "SERVER"}, {128, targetCompId_.toStdString()}, {34, "2"}, {52, timestamp}, {11, "TEST_ORDER_123"}, {55, "AAPL"}, {54, "1"}, {38, "100"}, {40, "2"}};
+  sendMessage(buildFixString(fields));
 }
-
 
 // Send a raw FIX message string to the server
 void FixClient::sendMessage(const std::string &rawMessage) {
@@ -116,9 +112,7 @@ void FixClient::onConnected() {
   string timestamp = ss.str();
 
   map<int, string> fields = {
-      {8, "FIX.4.4"}, {35, "A"}, {49, compId_.toStdString()}, {56, "SERVER"},
-      {34, "1"}, {52, timestamp}, {98, "0"}, {108, "30"}
-  };
+      {8, "FIX.4.4"}, {35, "A"}, {49, compId_.toStdString()}, {56, "SERVER"}, {34, "1"}, {52, timestamp}, {98, "0"}, {108, "30"}};
   sendMessage(buildFixString(fields));
 }
 
