@@ -1,140 +1,114 @@
 #include "FixClient.h"
 
-#include <QDebug>
-#include <QThread>
-#include <fstream>
+#include <chrono>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
+#include <thread>
 
-#include "common/json.hpp"
+#include "common/Logger.h"
 
 using namespace std;
-using json = nlohmann::json;
-
-// --- Helper function to build a FIX string ---
-string buildFixString(const map<int, string> &fields) {
-  string msg;
-  for (const auto &pair : fields) {
-    msg += to_string(pair.first) + "=" + pair.second + "\x01";
-  }
-  return msg;
-}
-
-// --- FixClient Implementation ---
 
 // Constructor
-FixClient::FixClient(QObject *parent) : QObject(parent), serverPort_(0) {
-  connect(&socket_, &QTcpSocket::connected, this, &FixClient::onConnected);
-  connect(&socket_, &QTcpSocket::readyRead, this, &FixClient::onReadyRead);
-  connect(&socket_, &QTcpSocket::disconnected, this, &FixClient::onDisconnected);
-}
+FixClient::FixClient()
+    : storeFactory_(FIX::SessionSettings()), logFactory_(FIX::SessionSettings()) {}
 
-// Load configuration from file
-bool FixClient::loadConfig(const QString &filePath) {
-  ifstream file(filePath.toStdString());
-  if (!file.is_open()) {
-    qCritical() << "Failed to open config file:" << filePath;
-    return false;
-  }
-
+// Start the FIX client with configuration file
+void FixClient::start(const string &configPath) {
   try {
-    json configData = json::parse(file);
-    compId_ = QString::fromStdString(configData.value("CompID", ""));
-    targetCompId_ = QString::fromStdString(configData.value("TargetCompID", ""));
-    serverHost_ = QString::fromStdString(configData.value("ServerHost", "127.0.0.1"));
-    serverPort_ = configData.value("ServerPort", 5555);
+    // --- Initialize logger ---
+    Logger::instance().init("logs/fix_client.log", LogLevel::INFO);
+    Logger::instance().info("===== FIX Client Starting =====");
 
-    if (compId_.isEmpty()) {
-      qCritical() << "CompID is missing in config file.";
-      return false;
+    // --- Load QuickFIX settings ---
+    settings_ = FIX::SessionSettings(configPath);
+    FIX::FileStoreFactory storeFactory(settings_);
+    FIX::FileLogFactory logFactory(settings_);
+
+    initiator_ = make_unique<FIX::SocketInitiator>(*this, storeFactory, settings_, logFactory);
+    initiator_->start();
+    Logger::instance().info("Client initiator started, waiting for Logon...");
+
+    // --- Wait until logon is successful ---
+    while (!loggedOn_) {
+      this_thread::sleep_for(chrono::milliseconds(500));
     }
 
-  } catch (const json::parse_error &e) {
-    qCritical() << "Failed to parse config file:" << e.what();
-    return false;
+    Logger::instance().info("Logon successful. Type 'send' to send test order or 'quit' to exit.");
+
+    // --- Command loop ---
+    string cmd;
+    while (getline(cin, cmd)) {
+      if (cmd == "quit" || cmd == "exit") break;
+      if (cmd == "send") sendTestOrder();
+    }
+
+    // --- Stop initiator ---
+    initiator_->stop();
+    Logger::instance().info("===== FIX Client Stopped =====");
+  } catch (const exception &e) {
+    Logger::instance().error(string("Exception in FixClient::start: ") + e.what());
   }
-  return true;
 }
 
-// Connect to server
-void FixClient::connectToServer() {
-  if (serverHost_.isEmpty() || serverPort_ == 0) {
-    qCritical() << "Server configuration is not loaded or invalid.";
+// --- QuickFIX callbacks ---
+
+void FixClient::onCreate(const FIX::SessionID &sessionID) {
+  Logger::instance().info("[Client] Session created: " + sessionID.toString());
+}
+
+void FixClient::onLogon(const FIX::SessionID &sessionID) {
+  Logger::instance().info("[Client] Logon successful: " + sessionID.toString());
+  activeSession_ = sessionID;
+  loggedOn_ = true;
+}
+
+void FixClient::onLogout(const FIX::SessionID &sessionID) {
+  Logger::instance().warn("[Client] Logout: " + sessionID.toString());
+  loggedOn_ = false;
+}
+
+void FixClient::toAdmin(FIX::Message &message, const FIX::SessionID &sessionID) {
+  Logger::instance().debug("[Client->Admin] " + message.toString());
+}
+
+void FixClient::fromAdmin(const FIX::Message &message, const FIX::SessionID &sessionID) throw(FIX::FieldNotFound, FIX::IncorrectDataFormat, FIX::IncorrectTagValue, FIX::RejectLogon) {
+  Logger::instance().debug("[Admin->Client] " + message.toString());
+}
+
+void FixClient::toApp(FIX::Message &message, const FIX::SessionID &sessionID) throw(FIX::DoNotSend) {
+  Logger::instance().debug("[Client->App] " + message.toString());
+}
+
+void FixClient::fromApp(const FIX::Message &message, const FIX::SessionID &sessionID) throw(FIX::FieldNotFound, FIX::IncorrectDataFormat, FIX::IncorrectTagValue, FIX::UnsupportedMessageType) {
+  Logger::instance().info("[App->Client] " + message.toString());
+}
+
+// --- Utility functions ---
+
+void FixClient::sendTestOrder() {
+  if (!loggedOn_) {
+    Logger::instance().warn("Cannot send order: not logged on.");
     return;
   }
-  qInfo() << "Connecting to" << serverHost_ << ":" << serverPort_ << "with CompID:" << compId_;
-  socket_.connectToHost(serverHost_, serverPort_);
-}
 
-// Send a test application message
-void FixClient::sendTestMessage() {
-  if (targetCompId_.isEmpty()) {
-    qInfo() << "No TargetCompID specified, skipping test message.";
-    return;
+  // Create FIX44::NewOrderSingle
+  FIX44::NewOrderSingle order(
+      FIX::ClOrdID("TEST_ORDER_001"),
+      FIX::HandlInst('1'),
+      FIX::Symbol("AAPL"),
+      FIX::Side(FIX::Side_BUY),
+      FIX::TransactTime(),
+      FIX::OrdType(FIX::OrdType_MARKET));
+
+  order.set(FIX::OrderQty(100));
+  order.set(FIX::TimeInForce(FIX::TimeInForce_DAY));
+
+  try {
+    FIX::Session::sendToTarget(order, activeSession_);
+    Logger::instance().info("[Client] Sent test order (NewOrderSingle) to server.");
+  } catch (const exception &e) {
+    Logger::instance().error(string("[Client] Failed to send order: ") + e.what());
   }
-  qInfo() << "Sending a test New Order message to" << targetCompId_;
-
-  auto now = chrono::system_clock::now();
-  auto in_time_t = chrono::system_clock::to_time_t(now);
-  stringstream ss;
-  ss << put_time(gmtime(&in_time_t), "%Y%m%d-%H:%M:%S");
-  string timestamp = ss.str();
-
-  map<int, string> fields = {
-      {8, "FIX.4.4"}, {35, "D"}, {49, compId_.toStdString()}, {56, "SERVER"}, {128, targetCompId_.toStdString()}, {34, "2"}, {52, timestamp}, {11, "TEST_ORDER_123"}, {55, "AAPL"}, {54, "1"}, {38, "100"}, {40, "2"}};
-  sendMessage(buildFixString(fields));
-}
-
-// Send a raw FIX message string to the server
-void FixClient::sendMessage(const std::string &rawMessage) {
-  if (socket_.state() != QAbstractSocket::ConnectedState) {
-    qWarning() << "Not connected to server.";
-    return;
-  }
-
-  quint32 len = rawMessage.length();
-  QByteArray packet;
-  packet.append(reinterpret_cast<const char *>(&len), sizeof(len));
-  packet.append(QByteArray::fromStdString(rawMessage));
-
-  socket_.write(packet);
-  qInfo() << "[Client] Sent:" << QString::fromStdString(rawMessage);
-}
-
-// Called when connection established
-void FixClient::onConnected() {
-  qInfo() << "Connected to server. Sending Logon.";
-
-  auto now = chrono::system_clock::now();
-  auto in_time_t = chrono::system_clock::to_time_t(now);
-  stringstream ss;
-  ss << put_time(gmtime(&in_time_t), "%Y%m%d-%H:%M:%S");
-  string timestamp = ss.str();
-
-  map<int, string> fields = {
-      {8, "FIX.4.4"}, {35, "A"}, {49, compId_.toStdString()}, {56, "SERVER"}, {34, "1"}, {52, timestamp}, {98, "0"}, {108, "30"}};
-  sendMessage(buildFixString(fields));
-}
-
-// Called when data received
-void FixClient::onReadyRead() {
-  buffer_.append(socket_.readAll());
-
-  while (buffer_.size() >= 4) {
-    quint32 packetSize = 0;
-    memcpy(&packetSize, buffer_.constData(), sizeof(quint32));
-
-    if (buffer_.size() < static_cast<int>(4 + packetSize))
-      break;
-
-    QByteArray data = buffer_.mid(4, packetSize);
-    buffer_.remove(0, 4 + packetSize);
-
-    qInfo() << "[Client] Received:" << QString::fromUtf8(data);
-  }
-}
-
-// Called when disconnected
-void FixClient::onDisconnected() {
-  qInfo() << "Disconnected from server.";
 }

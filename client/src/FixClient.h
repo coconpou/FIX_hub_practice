@@ -1,49 +1,48 @@
 #ifndef FIXCLIENT_H
 #define FIXCLIENT_H
 
-#include <QObject>
-#include <QTcpSocket>
+// Standard library
+#include <memory>
 #include <string>
 
-// TCP client for FIX connections
-class FixClient : public QObject {
-  Q_OBJECT
+// QuickFIX core headers
+#include <quickfix/Application.h>
+#include <quickfix/FileLog.h>
+#include <quickfix/FileStore.h>
+#include <quickfix/Session.h>
+#include <quickfix/SessionSettings.h>
+#include <quickfix/SocketInitiator.h>
 
+class FixClient : public FIX::Application {
  public:
-  // Constructor
-  explicit FixClient(QObject *parent = nullptr);
+  FixClient();
+  ~FixClient() override = default;
 
-  // Load configuration from file
-  bool loadConfig(const QString &filePath);
+  // Start the FIX client with a specified configuration file
+  void start(const std::string &configPath);
 
-  // Connect to FIX server using loaded config
-  void connectToServer();
+  // QuickFIX application callbacks
+  void onCreate(const FIX::SessionID &sessionID) override;
+  void onLogon(const FIX::SessionID &sessionID) override;
+  void onLogout(const FIX::SessionID &sessionID) override;
+  void toAdmin(FIX::Message &message, const FIX::SessionID &sessionID) override;
+  void fromAdmin(const FIX::Message &message, const FIX::SessionID &sessionID) override
+      throw(FIX::FieldNotFound, FIX::IncorrectDataFormat, FIX::IncorrectTagValue, FIX::RejectLogon);
+  void toApp(FIX::Message &message, const FIX::SessionID &sessionID) override
+      throw(FIX::DoNotSend);
+  void fromApp(const FIX::Message &message, const FIX::SessionID &sessionID) override
+      throw(FIX::FieldNotFound, FIX::IncorrectDataFormat, FIX::IncorrectTagValue, FIX::UnsupportedMessageType);
 
-  // Send a test application message
-  void sendTestMessage();
-
- private slots:
-  // Called when connection established
-  void onConnected();
-
-  // Called when data is received
-  void onReadyRead();
-
-  // Called when disconnected
-  void onDisconnected();
+  // Send a test order (NewOrderSingle)
+  void sendTestOrder();
 
  private:
-  // Send a raw FIX message string to the server
-  void sendMessage(const std::string &rawMessage);
-
-  QTcpSocket socket_;          // TCP socket instance
-  QByteArray buffer_;          // Data buffer for incoming messages
-
-  // Configuration
-  QString compId_;
-  QString targetCompId_;
-  QString serverHost_;
-  quint16 serverPort_;
+  FIX::SessionSettings settings_;                     // QuickFIX settings
+  std::unique_ptr<FIX::SocketInitiator> initiator_;   // Socket initiator
+  FIX::FileStoreFactory storeFactory_;                // Message store factory
+  FIX::FileLogFactory logFactory_;                    // Log file factory
+  FIX::SessionID activeSession_;                      // Current active session
+  bool loggedOn_ = false;                             // Logon state
 };
 
 #endif   // FIXCLIENT_H

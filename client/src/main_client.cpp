@@ -1,23 +1,33 @@
-#include <QCoreApplication>
-#include <QDebug>
-#include <QTimer>
+#include <iostream>
+#include <string>
 
 #include "FixClient.h"
+#include "common/Logger.h"
 
-// Entry point
-int main(int argc, char *argv[]) {
-  QCoreApplication app(argc, argv);
+int main(int argc, char **argv) {
+  try {
+    // Default configuration path
+    std::string configPath = "config/client.cfg";
+    if (argc > 1) {
+      configPath = argv[1];
+    }
 
-  FixClient client;
-  if (!client.loadConfig("config/fix_client.cfg")) {
-    qCritical() << "Failed to load configuration. Exiting.";
+    // Initialize global logger for the client
+    auto &logger = Logger::instance();
+    logger.init("logs/fix_client_main.log", LogLevel::INFO);
+    logger.info("========== FIX CLIENT START ==========");
+    logger.info("Using configuration file: " + configPath);
+
+    // Start the FIX client
+    FixClient client;
+    client.start(configPath);
+
+    logger.info("========== FIX CLIENT EXIT ==========");
+  } catch (const std::exception &e) {
+    std::cerr << "Fatal error: " << e.what() << std::endl;
+    Logger::instance().error(std::string("Fatal error: ") + e.what());
     return 1;
   }
 
-  client.connectToServer();
-
-  // Use a timer to send a test message after 2 seconds
-  QTimer::singleShot(2000, &client, &FixClient::sendTestMessage);
-
-  return app.exec();
+  return 0;
 }

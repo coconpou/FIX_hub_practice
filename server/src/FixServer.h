@@ -1,69 +1,59 @@
 #ifndef FIXSERVER_H
 #define FIXSERVER_H
 
-#include <QDateTime>
-#include <QHash>
-#include <QList>
-#include <QObject>
-#include <QTcpServer>
-#include <QTcpSocket>
+// Standard library
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
+// QuickFIX core headers
+#include <quickfix/Application.h>
+#include <quickfix/FileLog.h>
+#include <quickfix/FileStore.h>
+#include <quickfix/Session.h>
+#include <quickfix/SessionSettings.h>
+#include <quickfix/SocketAcceptor.h>
+
+// Core modules
 #include "common/ConfigManager.h"
+#include "common/FixCoder.h"
 #include "common/FixHelper.h"
+#include "common/FixSessionVerity.h"
 #include "common/Logger.h"
 #include "common/MessageStore.h"
 
-// TCP server for FIX connections
-class FixServer : public QTcpServer {
-  Q_OBJECT
-
+// FIX message hub server implementing FIX::Application
+class FixHubServer : public FIX::Application {
  public:
-  // Constructor
-  explicit FixServer(QObject *parent = nullptr);
+  // Constructor / Destructor
+  FixHubServer();
+  ~FixHubServer() override = default;
 
-  // Start listening on specified port
-  bool start(quint16 port);
+  // QuickFIX session callbacks
+  void onCreate(const FIX::SessionID &sessionID) override;
+  void onLogon(const FIX::SessionID &sessionID) override;
+  void onLogout(const FIX::SessionID &sessionID) override;
 
-  // Setup signal handling
-  static void setupSignalHandlers();
+  // Admin-level message handling
+  void toAdmin(FIX::Message &msg, const FIX::SessionID &sessionID) override;
+  void fromAdmin(const FIX::Message &msg, const FIX::SessionID &sessionID) override
+      throw(FIX::FieldNotFound, FIX::IncorrectDataFormat, FIX::IncorrectTagValue, FIX::RejectLogon);
 
-  // --- Static Helpers for Testing ---
-  // Parse raw string into a FixMessage map
-  static FixMessage parseFixMessage(const std::string &rawMsg);
+  // Application-level message handling
+  void toApp(FIX::Message &msg, const FIX::SessionID &sessionID) override
+      throw(FIX::DoNotSend);
+  void fromApp(const FIX::Message &msg, const FIX::SessionID &sessionID) override
+      throw(FIX::FieldNotFound, FIX::IncorrectDataFormat, FIX::IncorrectTagValue, FIX::UnsupportedMessageType);
 
-  // Serialize a FixMessage map back into a raw string, calculating BodyLength and CheckSum
-  static std::string serializeFixMessage(FixMessage &msg);
-
-public slots:
-  // Slot to handle the status dump signal
-  void handleStatusSignal();
-
-private slots:
-  // Handle new client connection
-  void onNewConnection();
-
-  // Handle client disconnection
-  void onClientDisconnected();
-
-  // Handle incoming data from client
-  void onReadyRead();
+  // Print all active sessions
+  void printSessions();
 
  private:
-  QList<QTcpSocket *> clients_;               // Connected client sockets
-  QHash<QTcpSocket *, QByteArray> buffers_;   // Data buffers per client
-  QHash<std::string, QTcpSocket *> compIdToSocketMap_; // CompID -> Socket
-  QHash<QTcpSocket *, std::string> socketToCompIdMap_; // Socket -> CompID
-  QHash<QTcpSocket *, QDateTime> connectionTimeMap_; // Socket -> Connection Time
-
-  // Parse raw string into a FixMessage map
-  static FixMessage parseFixMessage(const std::string &rawMsg);
-
-  // Serialize a FixMessage map back into a raw string, calculating BodyLength and CheckSum
-  static std::string serializeFixMessage(FixMessage &msg);
-
-  // Signal handling
-  static void statusSignalHandler(int signal);
-  static int sig_pipe[2];
+  // --- Module references ---
+  ConfigManager &config_ = ConfigManager::instance();   // Configuration manager
+  FixSessionVerity sessionValidator_;                   // Session header validator
+  FixCoder coder_;                                      // Message routing encoder/decoder
 };
 
 #endif   // FIXSERVER_H

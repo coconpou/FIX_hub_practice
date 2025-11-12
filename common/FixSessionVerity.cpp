@@ -1,9 +1,6 @@
 #include "FixSessionVerity.h"
 
-#include <quickfix/Field.h>
-#include <quickfix/fix44/Logon.h>
-
-#include <QDebug>
+#include <iostream>
 
 using namespace std;
 
@@ -13,48 +10,67 @@ FixSessionVerity::FixSessionVerity() {}
 // Destructor
 FixSessionVerity::~FixSessionVerity() = default;
 
-// Register allowed Sender/Target pair
+// Add a single allowed Sender/Target pair
 void FixSessionVerity::addAllowedPair(const string &sender, const string &target) {
   allowedPairs_[sender] = target;
 }
 
-// Validate FIX message header fields
-bool FixSessionVerity::validate(const FIX::Message &msg, QString &errorMsg) const {
-  FIX::SenderCompID sender;
-  FIX::TargetCompID target;
+// Replace all allowed pairs at once
+void FixSessionVerity::setAllowedPairs(const unordered_map<string, string> &pairs) {
+  allowedPairs_ = pairs;
+}
 
-  if (!msg.getHeader().isSetField(FIX::FIELD::SenderCompID) || !msg.getHeader().isSetField(FIX::FIELD::TargetCompID)) {
-    errorMsg = "Missing SenderCompID or TargetCompID";
+// Try to extract a header field by tag
+bool FixSessionVerity::tryGetHeaderField(const FIX::Message &msg, int tag, string &out) {
+  if (!msg.getHeader().isSetField(tag)) return false;
+  FIX::StringField f(tag);
+  msg.getHeader().getField(f);
+  out = f.getString();
+  return true;
+}
+
+// Validate FIX header: check SenderCompID and TargetCompID
+bool FixSessionVerity::validateHeader(const FIX::Message &msg, string &errorMsg) const {
+  string sender, target;
+
+  if (!tryGetHeaderField(msg, FIX::FIELD::SenderCompID, sender) ||
+      !tryGetHeaderField(msg, FIX::FIELD::TargetCompID, target)) {
+    errorMsg = "Missing SenderCompID(49) or TargetCompID(56)";
     return false;
   }
 
-  msg.getHeader().getField(sender);
-  msg.getHeader().getField(target);
-
-  auto it = allowedPairs_.find(sender.getValue());
+  auto it = allowedPairs_.find(sender);
   if (it == allowedPairs_.end()) {
-    errorMsg = QString("Unauthorized SenderCompID: %1").arg(QString::fromStdString(sender.getValue()));
+    errorMsg = "Unauthorized SenderCompID: " + sender;
     return false;
   }
 
-  if (it->second != target.getValue()) {
-    errorMsg = QString("TargetCompID mismatch: expected %1 but got %2")
-                   .arg(QString::fromStdString(it->second))
-                   .arg(QString::fromStdString(target.getValue()));
+  if (it->second != target) {
+    errorMsg = "TargetCompID mismatch: expected " + it->second + " but got " + target;
     return false;
   }
 
-  if (msg.getHeader().isSetField(FIX::FIELD::OnBehalfOfCompID)) {
-    FIX::OnBehalfOfCompID behalf;
-    msg.getHeader().getField(behalf);
-    qInfo() << "[FIX]" << "OnBehalfOfCompID =" << QString::fromStdString(behalf.getValue());
+  // Optional logging for fields 115 and 128
+  string behalf, deliver;
+  if (tryGetHeaderField(msg, FIX::FIELD::OnBehalfOfCompID, behalf)) {
+    cout << "[FIX] OnBehalfOfCompID(115)=" << behalf << endl;
   }
-
-  if (msg.getHeader().isSetField(FIX::FIELD::DeliverToCompID)) {
-    FIX::DeliverToCompID deliver;
-    msg.getHeader().getField(deliver);
-    qInfo() << "[FIX]" << "DeliverToCompID =" << QString::fromStdString(deliver.getValue());
+  if (tryGetHeaderField(msg, FIX::FIELD::DeliverToCompID, deliver)) {
+    cout << "[FIX] DeliverToCompID(128)=" << deliver << endl;
   }
 
   return true;
+}
+
+// Validate Logon (MsgType=A), throw RejectLogon if invalid
+void FixSessionVerity::validateLogonOrThrow(const FIX::Message &logonMsg) const {
+  string msgType;
+  if (!tryGetHeaderField(logonMsg, FIX::FIELD::MsgType, msgType) || msgType != "A") {
+    throw FIX::RejectLogon("Invalid call: validateLogonOrThrow expects MsgType=A (Logon).");
+  }
+
+  string err;
+  if (!validateHeader(logonMsg, err)) {
+    throw FIX::RejectLogon(err);
+  }
 }
