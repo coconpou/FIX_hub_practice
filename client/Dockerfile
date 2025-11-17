@@ -24,6 +24,9 @@ COPY --from=builder /app/client/build/client .
 # Copy the default config file (will be overridden by docker-compose volumes)
 COPY client/config/fix_client.cfg ./config/
 
+# Copy the spec file
+COPY spec ./spec
+
 # Set environment variable for shared libraries
 ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
 

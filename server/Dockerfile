@@ -24,6 +24,9 @@ COPY --from=builder /app/server/build/server .
 # Copy the config file
 COPY server/config/fix_server.cfg ./config/
 
+# Copy the spec file
+COPY spec ./spec
+
 # Set environment variable for shared libraries
 ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
 

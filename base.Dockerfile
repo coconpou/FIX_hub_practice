@@ -10,6 +10,7 @@ RUN apt-get update && \
     build-essential \
     pkg-config \
     qt6-base-dev \
+    libquickfix-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

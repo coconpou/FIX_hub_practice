@@ -1,0 +1,13 @@
+{
+  "routing_rules": [
+    { "deliver_id": "BR1", "target_comp_id": "BROKER" },
+    { "deliver_id": "BR2", "target_comp_id": "BROKER2" },
+    { "deliver_id": "BR3", "target_comp_id": "BROKER3" }
+  ],
+
+  "on_behalf_rules": [
+    { "sender_comp_id": "CLIENT1", "on_behalf_id": "99900A" },
+    { "sender_comp_id": "CLIENT2", "on_behalf_id": "88800B" },
+    { "sender_comp_id": "ABC", "on_behalf_id": "99900X" }
+  ]
+}

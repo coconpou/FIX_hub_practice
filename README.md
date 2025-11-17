@@ -38,8 +38,6 @@
 │   ├── main_test.cpp
 │   └── test_*.cpp
 ├── base.Dockerfile     # 用於編譯的基礎 Docker 映像檔
-├── client_a.cfg        # Docker Compose 測試用的客戶端 A 設定
-├── client_b.cfg        # Docker Compose 測試用的客戶端 B 設定
 └── docker-compose.yml  # Docker Compose 服務編排
 ```
 
@@ -52,14 +50,17 @@
 這是最簡單、最快的方式，能一鍵啟動包含一個伺服器和兩個客戶端的完整測試場景。
 
 **環境需求**:
+
 - Docker
 - Docker Compose
 
 **執行步驟**:
 在專案根目錄下，執行以下指令：
+
 ```bash
 docker-compose up --build
 ```
+
 - `--build` 參數會強制重新建置所有映像檔。
 - 啟動後，您會在終端機上看到 `server`, `client-a`, `client-b` 的日誌輸出。
 - `client-a` 會在登入後，自動傳送一筆訂單訊息給 `client-b`，您可以觀察日誌來驗證路由功能。
@@ -72,12 +73,14 @@ docker-compose up --build
 如果您想在本地端手動編譯和執行。
 
 **環境需求**:
+
 - C++17 編譯器 (g++)
 - `make`
 - `pkg-config`
 - **Qt6 開發函式庫** (在 Ubuntu 上可透過 `sudo apt-get install qt6-base-dev` 安裝)
 
 **編譯**:
+
 ```bash
 # 編譯伺服器
 cd server/
@@ -93,6 +96,7 @@ make test
 ```
 
 **執行**:
+
 ```bash
 # 啟動伺服器
 ./server/build/server

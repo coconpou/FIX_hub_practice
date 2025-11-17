@@ -1,33 +1,24 @@
-#include <iostream>
-#include <string>
-
 #include "FixClient.h"
-#include "common/Logger.h"
+#include "FixHelper.h"
 
-int main(int argc, char **argv) {
-  try {
-    // Default configuration path
-    std::string configPath = "config/client.cfg";
-    if (argc > 1) {
-      configPath = argv[1];
-    }
+int main() {
+  FixClient cli("127.0.0.1", 5001);
+  cli.connectServer();
 
-    // Initialize global logger for the client
-    auto &logger = Logger::instance();
-    logger.init("logs/fix_client_main.log", LogLevel::INFO);
-    logger.info("========== FIX CLIENT START ==========");
-    logger.info("Using configuration file: " + configPath);
+  FixMessage logon;
+  logon[35] = "A";
+  logon[49] = "ABC";
+  logon[56] = "HUB";
+  cli.sendFix(logon);
 
-    // Start the FIX client
-    FixClient client;
-    client.start(configPath);
+  FixMessage order;
+  order[35] = "D";
+  order[49] = "ABC";
+  order[56] = "HUB";
+  order[128] = "BR1";
+  order[11] = "ORDER1";
 
-    logger.info("========== FIX CLIENT EXIT ==========");
-  } catch (const std::exception &e) {
-    std::cerr << "Fatal error: " << e.what() << std::endl;
-    Logger::instance().error(std::string("Fatal error: ") + e.what());
-    return 1;
-  }
+  cli.sendFix(order);
 
-  return 0;
+  cli.closeConn();
 }

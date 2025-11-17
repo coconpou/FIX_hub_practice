@@ -1,8 +1,17 @@
 #include "FixHelper.h"
 
+#include <sstream>
 using namespace std;
 
+//  static tag constant definitions
+const int FixHelper::TAG_MSG_TYPE = 35;
+const int FixHelper::TAG_SENDER_COMP_ID = 49;
+const int FixHelper::TAG_TARGET_COMP_ID = 56;
+const int FixHelper::TAG_ON_BEHALF_OF_COMP_ID = 115;
+const int FixHelper::TAG_DELIVER_TO_COMP_ID = 128;
+
 // Get message type from tag 35
+
 FixMessageType FixHelper::GetMsgType(const FixMessage &msg) {
   static const unordered_map<char, FixMessageType> typeMap = {
       {'D', FixMessageType::NewOrder},
@@ -20,7 +29,8 @@ FixMessageType FixHelper::GetMsgType(const FixMessage &msg) {
   return (found != typeMap.end()) ? found->second : FixMessageType::Unknown;
 }
 
-// Check if message type is routable
+// Check if the FIX message is routable
+
 bool FixHelper::IsRoutableAppMessage(FixMessageType msgType) {
   static const unordered_set<FixMessageType> routable = {
       FixMessageType::NewOrder,
@@ -32,7 +42,8 @@ bool FixHelper::IsRoutableAppMessage(FixMessageType msgType) {
   return routable.count(msgType) > 0;
 }
 
-// Get value of tag
+// Get value by FIX tag
+
 string FixHelper::GetTagValue(const FixMessage &msg, int tag) {
   auto it = msg.find(tag);
   if (it != msg.end())
@@ -40,7 +51,53 @@ string FixHelper::GetTagValue(const FixMessage &msg, int tag) {
   return "";
 }
 
-// Set value of tag
+// Set FIX tag value
+
 void FixHelper::SetTagValue(FixMessage &msg, int tag, const string &value) {
   msg[tag] = value;
+}
+
+// Parse Raw FIX → map<int,string>
+
+FixMessage FixHelper::ParseRawFix(const std::string &raw, char delimiter) {
+  FixMessage msg;
+
+  string normalized = raw;
+  for (char &c : normalized) {
+    if (c == '\x01') c = delimiter;
+  }
+
+  stringstream ss(normalized);
+  string token;
+
+  while (getline(ss, token, delimiter)) {
+    if (token.empty()) continue;
+
+    auto pos = token.find('=');
+    if (pos == string::npos) continue;
+
+    string tagStr = token.substr(0, pos);
+    string value = token.substr(pos + 1);
+
+    try {
+      int tag = stoi(tagStr);
+      msg[tag] = value;
+    } catch (...) {
+      continue;
+    }
+  }
+
+  return msg;
+}
+
+// Convert map<int,string> → raw FIX
+
+string FixHelper::ToRawFix(const FixMessage &msg, char delimiter) {
+  ostringstream oss;
+
+  for (const auto &p : msg) {
+    oss << p.first << '=' << p.second << delimiter;
+  }
+
+  return oss.str();
 }

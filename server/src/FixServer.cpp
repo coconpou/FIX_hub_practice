@@ -1,131 +1,164 @@
 #include "FixServer.h"
 
-#include <quickfix/fix44/ExecutionReport.h>
-#include <quickfix/fix44/Logon.h>
-#include <quickfix/fix44/Reject.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <quickfix/Message.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
+#include <cstring>
 #include <iostream>
+#include <thread>
 
-#include "common/ConfigManager.h"
-#include "common/FixCoder.h"
-#include "common/FixHelper.h"
-#include "common/FixSessionVerity.h"
-#include "common/Logger.h"
-#include "common/MessageStore.h"
-
-using namespace std;
-
-FixSessionVerity sessionValidator;
-FixCoder fixCoder;
-
-FixHubServer::FixHubServer() {
-  // 初始化 ConfigManager
-  auto &config = ConfigManager::instance();
-  config.load("config/server.json");
-  config.loadAllowedCompIds("config/allowed_ids.txt");
-
-  // 初始化 Logger
-  auto &logger = Logger::instance();
-  logger.init("fix_server.log", LogLevel::INFO);
-
-  // 初始化 MessageStore
-  auto &store = MessageStore::instance();
-  store.init("storage/offline_msgs");
-
-  // 初始化 Session 驗證規則
-  unordered_map<string, string> allowedPairs;
-  for (const auto &id : config.getAllowedCompIds()) {
-    allowedPairs[id] = "HUB";   // 假設 server 為 HUB
-  }
-  sessionValidator.setAllowedPairs(allowedPairs);
+FixServer::FixServer(FixCoder *coder, FixSessionVerity *verity, int port)
+    : port_(port), listenFd_(-1), running_(false), coder_(coder), verity_(verity) {}
+FixServer::~FixServer() {
+  stop();
 }
 
-void FixHubServer::onCreate(const FIX::SessionID &sessionID) {
-  Logger::instance().info("🆕 Session created: " + sessionID.toString());
-}
-
-void FixHubServer::fromAdmin(const FIX::Message &message, const FIX::SessionID &sessionID) throw(FIX::FieldNotFound, FIX::IncorrectDataFormat, FIX::IncorrectTagValue, FIX::RejectLogon) {
-  FIX::MsgType msgType;
-  message.getHeader().getField(msgType);
-
-  if (msgType == FIX::MsgType_Logon) {
-    sessionValidator.validateLogonOrThrow(message);
-    Logger::instance().info("✅ Logon verified.");
-  }
-}
-
-void FixHubServer::onLogon(const FIX::SessionID &sessionID) {
-  auto &logger = Logger::instance();
-  const string sender = sessionID.getSenderCompID().getString();
-  logger.info("🔗 Logon: " + sender);
-
-  // 取回離線訊息
-  auto &store = MessageStore::instance();
-  auto queued = store.getAndClearQueuedMessages(sender);
-  for (const auto &rawMsg : queued) {
-    FIX::Message fixMsg(rawMsg, FIX::DataDictionary("spec/FIX44.xml"), true);
-    FIX::Session::sendToTarget(fixMsg, sessionID);
-    logger.info("📦 Sent queued message to " + sender);
-  }
-}
-
-void FixHubServer::onLogout(const FIX::SessionID &sessionID) {
-  Logger::instance().info("❌ Logout: " + sessionID.toString());
-}
-
-void FixHubServer::fromApp(const FIX::Message &message, const FIX::SessionID &sessionID) throw(FIX::FieldNotFound, FIX::IncorrectDataFormat, FIX::IncorrectTagValue, FIX::UnsupportedMessageType) {
-  auto &config = ConfigManager::instance();
-  auto &logger = Logger::instance();
-
-  // 取出 MsgType
-  string msgTypeStr;
-  message.getHeader().getField(FIX::FIELD::MsgType, msgTypeStr);
-
-  // 檢查是否支援該訊息類型
-  if (!config.isMsgTypeSupported(msgTypeStr)) {
-    FIX44::Reject reject;
-    reject.set(FIX::Text("Unsupported MsgType=" + msgTypeStr));
-    FIX::Session::sendToTarget(reject, sessionID);
-    logger.warn("Rejected unsupported MsgType=" + msgTypeStr);
+void FixServer::start() {
+  listenFd_ = socket(AF_INET, SOCK_STREAM, 0);
+  if (listenFd_ < 0) {
+    Logger::instance().error("Failed to create socket");
     return;
   }
 
-  // 路由與轉換
-  FixMessage fixMap;
-  fixMap[35] = msgTypeStr;
-  fixMap[49] = sessionID.getSenderCompID().getString();
-  fixMap[56] = sessionID.getTargetCompID().getString();
+  int opt = 1;
+  setsockopt(listenFd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-  string error;
-  if (!fixCoder.TransformMessage(fixMap, error)) {
-    logger.error("Routing failed: " + error);
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = INADDR_ANY;
+  addr.sin_port = htons(port_);
+
+  if (bind(listenFd_, (sockaddr *)&addr, sizeof(addr)) < 0) {
+    Logger::instance().error("Bind failed");
     return;
   }
 
-  string target = fixCoder.GetTargetCompID(fixMap, error);
-  if (target.empty()) {
-    logger.error("No target found for message: " + error);
+  if (listen(listenFd_, 10) < 0) {
+    Logger::instance().error("Listen failed");
     return;
   }
 
-  // 轉送
-  FIX::Message forwardMsg(message);
-  FixHelper::SetTagValue(fixMap, FIX::FIELD::TargetCompID, target);
-  logger.info("🔁 Routed message to " + target);
+  running_ = true;
+  std::thread(&FixServer::acceptLoop, this).detach();
 
-  bool sent = false;
-  for (const auto &sid : FIX::Session::getSessions()) {
-    if (sid.getTargetCompID().getString() == target) {
-      FIX::Session::sendToTarget(forwardMsg, sid);
-      sent = true;
+  Logger::instance().info("FixServer started on port " + std::to_string(port_));
+}
+
+void FixServer::stop() {
+  running_ = false;
+  if (listenFd_ > 0) close(listenFd_);
+}
+
+void FixServer::acceptLoop() {
+  while (running_) {
+    int clientSock = accept(listenFd_, nullptr, nullptr);
+    if (clientSock < 0) continue;
+
+    Logger::instance().info("Client connected");
+
+    std::thread(&FixServer::clientHandler, this, clientSock).detach();
+  }
+}
+
+void FixServer::clientHandler(int clientSock) {
+  while (true) {
+    std::string raw = recvMessage(clientSock);
+    if (raw.empty()) {
+      Logger::instance().warn("Client disconnected.");
       break;
+    }
+
+    FixMessage msg = FixHelper::ParseRawFix(raw);
+
+    int msgType = atoi(FixHelper::GetTagValue(msg, FixHelper::TAG_MSG_TYPE).c_str());
+
+    // Logon (35=A)
+    if (msgType == 'A') {
+      if (!processLogon(msg, clientSock)) {
+        Logger::instance().warn("Logon failed, closing socket");
+        close(clientSock);
+        return;
+      }
+    } else {
+      processAppMessage(msg, clientSock);
     }
   }
 
-  if (!sent) {
-    // 儲存離線訊息
-    auto &store = MessageStore::instance();
-    store.storeMessage(target, forwardMsg.toString());
-    logger.warn("⚠️ Target offline. Message stored for " + target);
+  // Cleanup socket mapping
+  if (socketToCompID.count(clientSock)) {
+    std::string compID = socketToCompID[clientSock];
+    socketToCompID.erase(clientSock);
+    compIDToSocket.erase(compID);
+  }
+
+  close(clientSock);
+}
+
+std::string FixServer::recvMessage(int sock) {
+  char buffer[4096];
+  memset(buffer, 0, sizeof(buffer));
+
+  int received = recv(sock, buffer, sizeof(buffer), 0);
+  if (received <= 0) return "";
+
+  return std::string(buffer, received);
+}
+
+void FixServer::sendMessage(int sock, const std::string &rawFix) {
+  send(sock, rawFix.c_str(), rawFix.size(), 0);
+}
+bool FixServer::processLogon(const FixMessage &msg, int sock) {
+  std::string err;
+  if (!verity_->validateHeader(msg, err)) {
+    Logger::instance().warn("Logon rejected: " + err);
+    return false;
+  }
+
+  std::string sender = FixHelper::GetTagValue(msg, FixHelper::TAG_SENDER_COMP_ID);
+
+  socketToCompID[sock] = sender;
+  compIDToSocket[sender] = sock;
+
+  Logger::instance().info("Logon OK for " + sender);
+
+  flushOfflineMessages(sender, sock);
+  return true;
+}
+
+void FixServer::processAppMessage(FixMessage &msg, int sock) {
+  std::string err;
+
+  if (!coder_->TransformMessage(msg, err)) {
+    Logger::instance().error("Routing fail: " + err);
+    return;
+  }
+
+  std::string target = FixHelper::GetTagValue(msg, FixHelper::TAG_TARGET_COMP_ID);
+
+  if (!compIDToSocket.count(target)) {
+    Logger::instance().warn("Target " + target + " offline — store message");
+    MessageStore::instance().storeMessage(target, FixHelper::ToRawFix(msg));
+    return;
+  }
+
+  int targetSock = compIDToSocket[target];
+  sendMessage(targetSock, FixHelper::ToRawFix(msg));
+
+  Logger::instance().info("Forwarded message to " + target);
+}
+
+void FixServer::flushOfflineMessages(const std::string &targetCompId, int sock) {
+  auto msgs = MessageStore::instance().getAndClearQueuedMessages(targetCompId);
+
+  if (msgs.empty()) return;
+
+  Logger::instance().info("Flushing " + std::to_string(msgs.size()) +
+                          " offline messages to " + targetCompId);
+
+  for (const auto &m : msgs) {
+    sendMessage(sock, m);
   }
 }
